@@ -1,41 +1,375 @@
-public interface Moove{
-    void Move(int deltaX, int deltaY);
-    bool CanMove(int x, int y);
-}
-public interface IDrawable
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace ConsoleGame
+{
+    // Ваши интерфейсы
+    public interface Moove
+    {
+        void Move(int deltaX, int deltaY);
+        bool CanMove(int x, int y);
+    }
+
+    public interface IDrawable
     {
         char Symbol { get; }
         int X { get; }
         int Y { get; }
         ConsoleColor Color { get; }
     }
-public interface IColectable{
+
+    public interface ICollectable
+    {
+        int Points { get; }
+        void Collect(Player player);
+    }
+
+    // Абстрактные классы
+    public abstract class GameObject : IDrawable
+    {
+        public int X { get; protected set; }
+        public int Y { get; protected set; }
+        public abstract char Symbol { get; }
+        public virtual ConsoleColor Color => ConsoleColor.White;
+        public bool IsDestroyed { get; protected set; }
+        
+        protected GameObject(int x, int y)
+        {
+            X = x;
+            Y = y;
+            IsDestroyed = false;
+        }
+        
+        public virtual void Destroy()
+        {
+            IsDestroyed = true;
+        }
+    }
+
+    public abstract class MovingObject : GameObject, Moove
+    {
+        protected MovingObject(int x, int y) : base(x, y) { }
+        public abstract void Move(int deltaX, int deltaY);
+        public abstract bool CanMove(int x, int y);
+    }
+
+    // Класс игрока
+    public class Player : MovingObject
+    {
+        public int Score { get; private set; }
+        
+        public Player(int x, int y) : base(x, y) 
+        {
+            Score = 0;
+        }
+        
+        public override char Symbol => 'P';
+        public override ConsoleColor Color => ConsoleColor.Green;
+        
+        public override void Move(int deltaX, int deltaY)
+        {
+            int newX = X + deltaX;
+            int newY = Y + deltaY;
+            
+            if (CanMove(newX, newY))
+            {
+                X = newX;
+                Y = newY;
+            }
+        }
+        
+        public override bool CanMove(int x, int y)
+        {
+            return x >= 0 && x < Game.Width && 
+                   y >= 0 && y < Game.Height;
+        }
+        
+        public void AddScore(int points)
+        {
+            Score += points;
+        }
+    }
+
+    // Класс врага
+    public class Enemy : MovingObject
+    {
+        private Random random = new Random();
+        
+        public Enemy(int x, int y) : base(x, y) { }
+        
+        public override char Symbol => 'E';
+        public override ConsoleColor Color => ConsoleColor.Red;
+        
+        public override void Move(int deltaX, int deltaY)
+        {
+            int newX = X + deltaX;
+            int newY = Y + deltaY;
+            
+            if (CanMove(newX, newY))
+            {
+                X = newX;
+                Y = newY;
+            }
+        }
+        
+        public override bool CanMove(int x, int y)
+        {
+            return x >= 0 && x < Game.Width && 
+                   y >= 0 && y < Game.Height;
+        }
+        
+        public void RandomMove()
+        {
+            int direction = random.Next(4);
+            switch (direction)
+            {
+                case 0: Move(0, -1); break; // вверх
+                case 1: Move(0, 1); break;  // вниз
+                case 2: Move(-1, 0); break; // влево
+                case 3: Move(1, 0); break;  // вправо
+            }
+        }
+    }
+
+    // Класс сокровища
+    public class Treasure : GameObject, ICollectable
+    {
+        public int Points { get; private set; }
+        
+        public Treasure(int x, int y, int points) : base(x, y)
+        {
+            Points = points;
+        }
+        
+        public override char Symbol => '$';
+        public override ConsoleColor Color => ConsoleColor.Yellow;
+        
+        public void Collect(Player player)
+        {
+            player.AddScore(Points);
+            Destroy();
+        }
+    }
+
+    // Класс стены (неподвижный объект)
+    public class Wall : GameObject
+    {
+        public Wall(int x, int y) : base(x, y) { }
+        
+        public override char Symbol => '#';
+        public override ConsoleColor Color => ConsoleColor.Gray;
+    }
+
+    // Основной класс игры
+    public class Game
+    {
+        public const int Width = 20;
+        public const int Height = 15;
+        
+        private Player player;
+        private List<Enemy> enemies;
+        private List<Treasure> treasures;
+        private List<Wall> walls;
+        private bool isRunning;
+        
+        public Game()
+        {
+            player = new Player(10, 7);
+            enemies = new List<Enemy>();
+            treasures = new List<Treasure>();
+            walls = new List<Wall>();
+            isRunning = true;
+            
+            InitializeLevel();
+        }
+        
+        private void InitializeLevel()
+        {
+            // Создаем стены по краям
+            for (int x = 0; x < Width; x++)
+            {
+                walls.Add(new Wall(x, 0));
+                walls.Add(new Wall(x, Height - 1));
+            }
+            
+            for (int y = 0; y < Height; y++)
+            {
+                walls.Add(new Wall(0, y));
+                walls.Add(new Wall(Width - 1, y));
+            }
+            
+            // Создаем внутренние стены
+            walls.Add(new Wall(5, 3));
+            walls.Add(new Wall(5, 4));
+            walls.Add(new Wall(14, 10));
+            walls.Add(new Wall(14, 11));
+            
+            // Создаем врагов
+            enemies.Add(new Enemy(5, 5));
+            enemies.Add(new Enemy(15, 5));
+            enemies.Add(new Enemy(5, 10));
+            enemies.Add(new Enemy(15, 10));
+            
+            // Создаем сокровища
+            Random random = new Random();
+            for (int i = 0; i < 10; i++)
+            {
+                int x, y;
+                do
+                {
+                    x = random.Next(1, Width - 1);
+                    y = random.Next(1, Height - 1);
+                } while (IsOccupied(x, y));
+                
+                treasures.Add(new Treasure(x, y, random.Next(10, 51)));
+            }
+        }
+        
+        private bool IsOccupied(int x, int y)
+        {
+            // Проверяем стены
+            if (walls.Any(w => w.X == x && w.Y == y && !w.IsDestroyed))
+                return true;
+            
+            // Проверяем врагов
+            if (enemies.Any(e => e.X == x && e.Y == y && !e.IsDestroyed))
+                return true;
+            
+            // Проверяем игрока
+            if (player.X == x && player.Y == y)
+                return true;
+            
+            return false;
+        }
+        
+        public void Run()
+        {
+            while (isRunning)
+            {
+                Draw();
+                HandleInput();
+                Update();
+                System.Threading.Thread.Sleep(100);
+            }
+            
+            GameOver();
+        }
+        
+        private void Draw()
+        {
+            Console.Clear();
+            
+            // Рисуем все объекты
+            List<IDrawable> drawables = new List<IDrawable>();
+            drawables.AddRange(walls);
+            drawables.AddRange(treasures);
+            drawables.AddRange(enemies);
+            drawables.Add(player);
+            
+            foreach (var obj in drawables.Where(o => !(o is GameObject go) || !go.IsDestroyed))
+            {
+                Console.SetCursorPosition(obj.X, obj.Y);
+                Console.ForegroundColor = obj.Color;
+                Console.Write(obj.Symbol);
+            }
+            
+            // Рисуем интерфейс
+            Console.SetCursorPosition(0, Height);
+            Console.ForegroundColor = ConsoleColor.White;
+            Console.WriteLine($"Счет: {player.Score} | Врагов: {enemies.Count(e => !e.IsDestroyed)} | Сокровищ: {treasures.Count(t => !t.IsDestroyed)}");
+            Console.WriteLine("Управление: WASD или стрелки | Q - выход");
+            
+            Console.ResetColor();
+        }
+        
+        private void HandleInput()
+        {
+            if (!Console.KeyAvailable) return;
+            
+            var key = Console.ReadKey(true).Key;
+            
+            switch (key)
+            {
+                case ConsoleKey.W:
+                case ConsoleKey.UpArrow:
+                    player.Move(0, -1);
+                    break;
+                case ConsoleKey.S:
+                case ConsoleKey.DownArrow:
+                    player.Move(0, 1);
+                    break;
+                case ConsoleKey.A:
+                case ConsoleKey.LeftArrow:
+                    player.Move(-1, 0);
+                    break;
+                case ConsoleKey.D:
+                case ConsoleKey.RightArrow:
+                    player.Move(1, 0);
+                    break;
+                case ConsoleKey.Q:
+                    isRunning = false;
+                    break;
+            }
+        }
+        
+        private void Update()
+        {
+            // Проверяем сбор сокровищ
+            foreach (var treasure in treasures.Where(t => !t.IsDestroyed).ToList())
+            {
+                if (player.X == treasure.X && player.Y == treasure.Y)
+                {
+                    treasure.Collect(player);
+                }
+            }
+            
+            // Двигаем врагов
+            foreach (var enemy in enemies.Where(e => !e.IsDestroyed))
+            {
+                enemy.RandomMove();
+                
+                // Проверяем столкновение с игроком
+                if (player.X == enemy.X && player.Y == enemy.Y)
+                {
+                    isRunning = false;
+                }
+            }
+            
+            // Проверяем победу
+            if (treasures.All(t => t.IsDestroyed))
+            {
+                Console.Clear();
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("ПОБЕДА!");
+                Console.WriteLine($"Ваш финальный счет: {player.Score}");
+                Console.WriteLine("Нажмите любую клавишу для выхода...");
+                Console.ReadKey();
+                isRunning = false;
+            }
+        }
+        
+        private void GameOver()
+        {
+            Console.Clear();
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("ИГРА ОКОНЧЕНА!");
+            Console.WriteLine($"Ваш счет: {player.Score}");
+            Console.WriteLine("Нажмите любую клавишу для выхода...");
+            Console.ReadKey();
+        }
+    }
     
-}
-public abstract class GameObject : IDrawable
-{
-    public int X { get; protected set; }
-    public int Y { get; protected set; }
-    public abstract char Symbol { get; }
-    public virtual ConsoleColor Color => ConsoleColor.White;
-    public bool IsDestroyed { get; protected set}
-    protected GameObject(int x, int y)
+    // Точка входа
+    class Program
     {
-        X = x;
-        Y = y;
-        IsDestroyed = false;
+        static void Main(string[] args)
+        {
+            Console.CursorVisible = false;
+            Console.Title = "Сбор сокровищ";
+            
+            Game game = new Game();
+            game.Run();
+        }
     }
-    public virtual void Destroy()
-    {
-        IsDestroyed = true;
-    }
-}
-public abstract class MovingObject: GameObject, Moove{
-
-}
-public class Player: MovingObject{
-
-}
-public class Entity: MovingObject{
-
 }
